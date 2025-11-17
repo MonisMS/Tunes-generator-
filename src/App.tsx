@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { motion } from 'framer-motion';
-import { Music, Play, Pause, Settings, Store, Volume2 } from 'lucide-react';
+import { Music, Play, Pause, Settings, Store, Volume2, Square } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,6 +15,7 @@ function App() {
   const [temperature, setTemperature] = useState(1.0);
   const [bpm, setBpm] = useState(120);
   const [volume, setVolume] = useState(1.0);
+  const [isPaused, setIsPaused] = useState(false);
 
   const marketplaceBeats = [
     { id: 1, name: 'Lo-fi Chill', prompt: 'Relaxing lo-fi hip hop with jazzy piano, soft drums, and vinyl crackle' },
@@ -33,7 +34,7 @@ function App() {
   const isPlayingAudioRef = useRef(false);
   const nextStartTimeRef = useRef(0);
   const gainNodeRef = useRef<GainNode | null>(null);
-
+  const pauseTimeRef = useRef(0);
   useEffect(() => {
     return () => {
       if (sessionRef.current) {
@@ -188,6 +189,43 @@ function App() {
     }
   };
 
+  const handlePause = async () => {
+    if (!sessionRef.current || !audioContextRef.current) return;
+    
+    try {
+      // Pause the session
+      await sessionRef.current.pause();
+      
+      // Store the current time
+      pauseTimeRef.current = audioContextRef.current.currentTime;
+      
+      // Update state
+      isPlayingAudioRef.current = false;
+      setIsPaused(true);
+    } catch (error) {
+      console.error('Pause error:', error);
+    }
+  };
+
+  const handleResume = async () => {
+    if (!sessionRef.current || !audioContextRef.current) return;
+    
+    try {
+      // Resume from where we paused
+      isPlayingAudioRef.current = true;
+      await sessionRef.current.play();
+      
+      setIsPaused(false);
+      
+      // Schedule any queued audio
+      if (audioQueueRef.current.length > 0) {
+        scheduleAudio();
+      }
+    } catch (error) {
+      console.error('Resume error:', error);
+    }
+  };
+
   const handleStop = async () => {
     if (!sessionRef.current) return;
 
@@ -198,8 +236,10 @@ function App() {
       await sessionRef.current.close();
       
       setIsPlaying(false);
+      setIsPaused(false);
       audioQueueRef.current = [];
       nextStartTimeRef.current = audioContextRef.current?.currentTime || 0;
+      pauseTimeRef.current = 0;
       
       setStatus('');
       sessionRef.current = null;
@@ -415,7 +455,80 @@ function App() {
       </motion.div>
 
       {/* Input Area */}
-      <div className="w-full max-w-3xl">
+      <div className="w-full max-w-3xl relative">
+        {/* Settings Dropdown - Outside overflow container */}
+        {showSettings && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="absolute left-6 bottom-20 p-5 rounded-xl min-w-[280px] z-50"
+            style={{
+              backgroundColor: 'oklch(0.2533 0.0229 277.4448)',
+              boxShadow: '0 10px 40px oklch(0 0 0 / 0.6)',
+              border: '1px solid oklch(0.3072 0.0287 281.7681)',
+              backdropFilter: 'blur(10px)'
+            }}
+          >
+            <h3 className="text-sm font-semibold mb-4" style={{ color: 'oklch(0.9366 0.0129 266.6974)' }}>
+              Generation Settings
+            </h3>
+            <div className="space-y-5">
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-medium" style={{ color: 'oklch(0.9366 0.0129 266.6974)' }}>
+                    Temperature
+                  </label>
+                  <span className="text-sm font-semibold px-2 py-0.5 rounded" style={{ 
+                    color: 'oklch(0.9366 0.0129 266.6974)',
+                    backgroundColor: 'oklch(0.3072 0.0287 281.7681)'
+                  }}>
+                    {temperature.toFixed(1)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={temperature}
+                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                  className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                  style={{
+                    accentColor: 'oklch(0.4815 0.1178 263.3758)',
+                    background: `linear-gradient(to right, oklch(0.4815 0.1178 263.3758) 0%, oklch(0.4815 0.1178 263.3758) ${(temperature / 2) * 100}%, oklch(0.3072 0.0287 281.7681) ${(temperature / 2) * 100}%, oklch(0.3072 0.0287 281.7681) 100%)`
+                  }}
+                />
+              </div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-medium" style={{ color: 'oklch(0.9366 0.0129 266.6974)' }}>
+                    BPM
+                  </label>
+                  <span className="text-sm font-semibold px-2 py-0.5 rounded" style={{ 
+                    color: 'oklch(0.9366 0.0129 266.6974)',
+                    backgroundColor: 'oklch(0.3072 0.0287 281.7681)'
+                  }}>
+                    {bpm}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="60"
+                  max="180"
+                  step="5"
+                  value={bpm}
+                  onChange={(e) => setBpm(parseInt(e.target.value))}
+                  className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                  style={{
+                    accentColor: 'oklch(0.4815 0.1178 263.3758)',
+                    background: `linear-gradient(to right, oklch(0.4815 0.1178 263.3758) 0%, oklch(0.4815 0.1178 263.3758) ${((bpm - 60) / 120) * 100}%, oklch(0.3072 0.0287 281.7681) ${((bpm - 60) / 120) * 100}%, oklch(0.3072 0.0287 281.7681) 100%)`
+                  }}
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+        
         <div className="relative rounded-2xl overflow-hidden" style={{ 
           backgroundColor: 'oklch(0.2703 0.0407 281.3036)',
           borderWidth: '1px',
@@ -443,66 +556,14 @@ function App() {
           
           <div className="flex items-center justify-between px-6 pb-4 pt-2" style={{ borderTopWidth: '1px', borderColor: 'oklch(0.3072 0.0287 281.7681)' }}>
             <div className="flex items-center gap-3">
-              <div className="relative">
-                <button 
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors hover:bg-opacity-10" 
-                  style={{ color: 'oklch(0.6243 0.0412 262.0375)' }}
-                >
-                  <Settings className="w-4 h-4" />
-                  Settings
-                </button>
-                
-                {showSettings && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute bottom-full left-0 mb-2 p-4 rounded-lg min-w-[250px]"
-                    style={{
-                      backgroundColor: 'oklch(0.2533 0.0229 277.4448)',
-                      boxShadow: '0 10px 30px oklch(0 0 0 / 0.5)',
-                      border: '1px solid oklch(0.3072 0.0287 281.7681)'
-                    }}
-                  >
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium block mb-2" style={{ color: 'oklch(0.9366 0.0129 266.6974)' }}>
-                          Temperature: {temperature.toFixed(1)}
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="2"
-                          step="0.1"
-                          value={temperature}
-                          onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                          className="w-full"
-                          style={{
-                            accentColor: 'oklch(0.4815 0.1178 263.3758)'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium block mb-2" style={{ color: 'oklch(0.9366 0.0129 266.6974)' }}>
-                          BPM: {bpm}
-                        </label>
-                        <input
-                          type="range"
-                          min="60"
-                          max="180"
-                          step="5"
-                          value={bpm}
-                          onChange={(e) => setBpm(parseInt(e.target.value))}
-                          className="w-full"
-                          style={{
-                            accentColor: 'oklch(0.4815 0.1178 263.3758)'
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
+              <button 
+                onClick={() => setShowSettings(!showSettings)}
+                className="flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors hover:bg-opacity-10" 
+                style={{ color: 'oklch(0.6243 0.0412 262.0375)' }}
+              >
+                <Settings className="w-4 h-4" />
+                Settings
+              </button>
 
               <button 
                 onClick={() => setShowMarketplace(true)}
@@ -532,17 +593,53 @@ function App() {
               </div>
             </div>
             
-            <Button
-              onClick={isPlaying ? handleStop : handleGenerate}
-              disabled={!prompt.trim() && !isPlaying}
-              className="rounded-full p-3 transition-all hover:opacity-90"
-              style={{ 
-                backgroundColor: isPlaying ? 'oklch(0.5280 0.1200 357.1130)' : 'oklch(0.4815 0.1178 263.3758)',
-                color: 'oklch(0.9366 0.0129 266.6974)'
-              }}
-            >
-              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-            </Button>
+            {!isPlaying ? (
+              <Button
+                onClick={handleGenerate}
+                disabled={!prompt.trim()}
+                className="rounded-full p-3 transition-all hover:opacity-90"
+                style={{ 
+                  backgroundColor: 'oklch(0.4815 0.1178 263.3758)',
+                  color: 'oklch(0.9366 0.0129 266.6974)'
+                }}
+              >
+                <Play className="w-5 h-5" />
+              </Button>
+            ) : isPaused ? (
+              <Button
+                onClick={handleResume}
+                className="rounded-full p-3 transition-all hover:opacity-90"
+                style={{ 
+                  backgroundColor: 'oklch(0.4815 0.1178 263.3758)',
+                  color: 'oklch(0.9366 0.0129 266.6974)'
+                }}
+              >
+                <Play className="w-5 h-5" />
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button
+                  onClick={handlePause}
+                  className="rounded-full p-3 transition-all hover:opacity-90"
+                  style={{ 
+                    backgroundColor: 'oklch(0.4815 0.1178 263.3758)',
+                    color: 'oklch(0.9366 0.0129 266.6974)'
+                  }}
+                >
+                  <Pause className="w-5 h-5" />
+                </Button>
+                <Button
+                  onClick={handleStop}
+                  className="rounded-full p-3 transition-all hover:opacity-90"
+                  style={{ 
+                    backgroundColor: 'oklch(0.5280 0.1200 357.1130)',
+                    color: 'oklch(0.9366 0.0129 266.6974)'
+                  }}
+                >
+                  <Square className="w-5 h-5" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
