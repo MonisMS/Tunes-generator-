@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { motion } from 'framer-motion';
-import { Music, Play, Pause, Settings, Store } from 'lucide-react';
+import { Music, Play, Pause, Settings, Store, Volume2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,6 +14,7 @@ function App() {
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [temperature, setTemperature] = useState(1.0);
   const [bpm, setBpm] = useState(120);
+  const [volume, setVolume] = useState(1.0);
 
   const marketplaceBeats = [
     { id: 1, name: 'Lo-fi Chill', prompt: 'Relaxing lo-fi hip hop with jazzy piano, soft drums, and vinyl crackle' },
@@ -31,6 +32,7 @@ function App() {
   const audioQueueRef = useRef<Float32Array[]>([]);
   const isPlayingAudioRef = useRef(false);
   const nextStartTimeRef = useRef(0);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   useEffect(() => {
     return () => {
@@ -70,7 +72,7 @@ function App() {
 
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
+      source.connect(gainNodeRef.current!);
       
       source.start(nextStartTimeRef.current);
       nextStartTimeRef.current += audioBuffer.duration;
@@ -98,6 +100,10 @@ function App() {
       });
 
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+      gainNodeRef.current = audioContextRef.current.createGain();
+      gainNodeRef.current.gain.value = volume;
+      gainNodeRef.current.connect(audioContextRef.current.destination);
       nextStartTimeRef.current = audioContextRef.current.currentTime;
       
       setStatus('Generating music...');
@@ -175,6 +181,13 @@ function App() {
     }
   };
 
+  const handleVolumeChange = (newVolume: number) => {
+    setVolume(newVolume);
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = newVolume;
+    }
+  };
+
   const handleStop = async () => {
     if (!sessionRef.current) return;
 
@@ -194,6 +207,7 @@ function App() {
       console.error('Stop error:', error);
     }
   };
+
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: 'oklch(0.2204 0.0198 275.8439)' }}>
@@ -498,6 +512,24 @@ function App() {
                 <Store className="w-4 h-4" />
                 Marketplace
               </button>
+
+              {/* Volume Control */}
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4" style={{ color: 'oklch(0.6243 0.0412 262.0375)' }} />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                  className="w-20"
+                  style={{ accentColor: 'oklch(0.4815 0.1178 263.3758)' }}
+                />
+                <span className="text-xs" style={{ color: 'oklch(0.6243 0.0412 262.0375)' }}>
+                  {Math.round(volume * 100)}%
+                </span>
+              </div>
             </div>
             
             <Button
